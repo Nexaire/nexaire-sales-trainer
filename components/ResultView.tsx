@@ -3,21 +3,25 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import LeadForm from "@/components/LeadForm";
-import { getScenarioById } from "@/lib/scenarios";
-import type { ChatMessage, EvaluationResult } from "@/lib/types";
+import { buildTrainingPromptContext, buildTrainingUrl } from "@/lib/trainingContext";
+import type { ChatMessage, EvaluationResult, TrainingContext } from "@/lib/types";
 
 type StoredDialogue = {
   scenarioId: string;
+  trainingContext?: TrainingContext;
   messages: ChatMessage[];
   finishedAt: string;
 };
 
+function getScore(evaluation: EvaluationResult) {
+  return evaluation.mode === "full_funnel" ? evaluation.overallScore ?? evaluation.score : evaluation.score;
+}
+
 function getSafeBetterResponse(evaluation: EvaluationResult | null): string {
   const text = evaluation?.betterResponseExample?.trim();
-
   if (text) return text;
 
-  return "Понимаю ваше сомнение. Давайте не будем принимать решение на общих словах: сначала уточним бюджет, требования к автомобилю и главный риск, который вас беспокоит. После этого я подготовлю расчет под ключ и покажу отдельно цену машины, доставку, таможню, утиль, СБКТС, ЭПТС и документы — так вы увидите итоговую сумму и сможете спокойно сравнить варианты.";
+  return "Понимаю ваше сомнение. Давайте сначала уточним вашу задачу, критерии выбора и что именно сейчас останавливает. После этого я покажу, как решение связано с вашей ситуацией, без давления и лишних обещаний. Если логика подойдет, предложу понятный следующий шаг.";
 }
 
 function ResultList({ title, items }: { title: string; items: string[] }) {
@@ -39,10 +43,10 @@ export default function ResultView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const scenario = useMemo(() => {
-    if (!dialogue?.scenarioId) return undefined;
-    return getScenarioById(dialogue.scenarioId);
-  }, [dialogue?.scenarioId]);
+  const promptContext = useMemo(() => {
+    if (!dialogue?.trainingContext) return undefined;
+    return buildTrainingPromptContext(dialogue.trainingContext);
+  }, [dialogue?.trainingContext]);
 
   useEffect(() => {
     const saved = localStorage.getItem("nexaire-trainer-last-dialogue");
@@ -74,7 +78,11 @@ export default function ResultView() {
         const response = await fetch("/api/evaluate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ scenarioId: dialogue.scenarioId, messages: dialogue.messages })
+          body: JSON.stringify({
+            scenarioId: dialogue.scenarioId,
+            trainingContext: dialogue.trainingContext,
+            messages: dialogue.messages
+          })
         });
 
         const data = await response.json();
@@ -83,17 +91,11 @@ export default function ResultView() {
           throw new Error(data?.error || "Не удалось получить оценку");
         }
 
-        if (!cancelled) {
-          setEvaluation(data.evaluation);
-        }
+        if (!cancelled) setEvaluation(data.evaluation);
       } catch (evaluateError) {
-        if (!cancelled) {
-          setError(evaluateError instanceof Error ? evaluateError.message : "Не удалось получить оценку");
-        }
+        if (!cancelled) setError(evaluateError instanceof Error ? evaluateError.message : "Не удалось получить оценку");
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -116,17 +118,27 @@ export default function ResultView() {
     );
   }
 
+  const restartHref = dialogue?.trainingContext ? buildTrainingUrl(dialogue.trainingContext) : "/scenarios";
+  const score = evaluation ? getScore(evaluation) : 0;
+  const resultTitle = evaluation?.mode === "single_stage"
+    ? `Разбор этапа: ${evaluation.stage ?? promptContext?.stage?.title ?? "отдельный этап"}`
+    : "Разбор всей сделки";
+
   return (
     <section className="section page-section">
       <div className="page-head result-head">
         <div>
           <p className="eyebrow">Результат тренировки</p>
-          <h1>{scenario?.title || "Диалог"}</h1>
-          <p>Оценка строится по контакту, выявлению потребности, доверию, цене, возражениям, закрытию и общей адекватности коммуникации.</p>
+          <h1>{resultTitle}</h1>
+          <p>
+            {promptContext
+              ? `Сфера: ${promptContext.industry.title}. Режим: ${promptContext.mode === "single_stage" ? "отдельный этап" : "вся сделка"}. Сценарий: ${promptContext.scenario.title}.`
+              : "Оценка строится по контакту, выявлению потребности, доверию, цене, возражениям, закрытию и общей адекватности коммуникации."}
+          </p>
         </div>
         {evaluation && (
           <div className="score-card-large">
-            <span>{evaluation.score}</span>
+            <span>{score}</span>
             <small>из 100</small>
           </div>
         )}
@@ -139,15 +151,32 @@ export default function ResultView() {
         <div className="result-layout">
           <div className="result-main">
             <article className="result-card result-summary">
-              <h2>Итог диалога</h2>
+              <h2>Итог клиента</h2>
               <p><strong>{evaluation.clientOutcome}</strong></p>
               <p>{evaluation.summary}</p>
             </article>
 
+            {evaluation.mode === "full_funnel" && evaluation.stageScores && (
+              <article className="result-card stage-score-card">
+                <h2>Оценка по этапам</h2>
+                <div className="stage-score-list">
+                  {evaluation.stageScores.map((stage) => (
+                    <div className="stage-score-row" key={stage.stage}>
+                      <div>
+                        <strong>{stage.stage}</strong>
+                        <p>{stage.comment}</p>
+                      </div>
+                      <span>{stage.score}</span>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            )}
+
             <div className="result-grid">
               <ResultList title="Сильные стороны" items={evaluation.strengths} />
-              <ResultList title="Ошибки" items={evaluation.mistakes} />
-              <ResultList title="Незаданные вопросы" items={evaluation.missedQuestions} />
+              <ResultList title={evaluation.mode === "full_funnel" ? "Слабые этапы" : "Ошибки"} items={evaluation.mode === "full_funnel" ? evaluation.weakStages ?? evaluation.mistakes : evaluation.mistakes} />
+              {evaluation.mode === "single_stage" && <ResultList title="Ошибки" items={evaluation.mistakes} />}
               <ResultList title="Рекомендации" items={evaluation.recommendations} />
             </div>
 
@@ -156,8 +185,13 @@ export default function ResultView() {
               <p>{getSafeBetterResponse(evaluation)}</p>
             </article>
 
+            <article className="result-card">
+              <h2>Что тренировать дальше</h2>
+              <p>{evaluation.nextRecommendedStage ?? evaluation.nextTrainingScenario ?? "Отработка возражений"}</p>
+            </article>
+
             <div className="result-actions">
-              <Link className="button button-secondary" href={`/train/${dialogue?.scenarioId}?new=1`}>
+              <Link className="button button-secondary" href={restartHref}>
                 Пройти еще раз
               </Link>
               <a className="button button-primary" href="#lead">
@@ -167,6 +201,16 @@ export default function ResultView() {
           </div>
 
           <aside className="dialogue-preview">
+            <h2>Контекст</h2>
+            {promptContext && (
+              <div className="context-list result-context-list">
+                <span>Сфера: <strong>{promptContext.industry.title}</strong></span>
+                <span>Режим: <strong>{promptContext.mode === "single_stage" ? "Отдельный этап" : "Вся сделка"}</strong></span>
+                {promptContext.stage && <span>Этап: <strong>{promptContext.stage.title}</strong></span>}
+                <span>Сценарий: <strong>{promptContext.scenario.title}</strong></span>
+              </div>
+            )}
+
             <h2>Фрагмент диалога</h2>
             <div className="preview-messages">
               {dialogue?.messages.slice(-6).map((message) => (

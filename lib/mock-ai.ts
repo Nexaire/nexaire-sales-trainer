@@ -1,6 +1,6 @@
 import { getMockClientReply } from "./getMockClientReply";
 import { evaluateMockDialog } from "./scoreDialog";
-import type { ChatMessage, ClientState, EvaluationResult, Scenario } from "./types";
+import type { ChatMessage, ClientState, EvaluationResult, Scenario, TrainingPromptContext } from "./types";
 
 function getLastManagerMessage(messages: ChatMessage[]) {
   return [...messages].reverse().find((message) => message.role === "manager");
@@ -9,16 +9,18 @@ function getLastManagerMessage(messages: ChatMessage[]) {
 export function mockClientReply(
   scenario: Scenario,
   messages: ChatMessage[],
-  state: ClientState = scenario.initialState
+  state: ClientState = scenario.initialState,
+  promptContext?: TrainingPromptContext
 ): { content: string; nextState: ClientState } {
   const lastManagerMessage = getLastManagerMessage(messages);
 
   if (!lastManagerMessage) {
-    return { content: scenario.openingMessage, nextState: scenario.initialState };
+    return { content: promptContext?.openingMessage ?? scenario.openingMessage, nextState: scenario.initialState };
   }
 
   const result = getMockClientReply({
     scenario,
+    promptContext,
     state,
     managerText: lastManagerMessage.content
   });
@@ -26,6 +28,6 @@ export function mockClientReply(
   return { content: result.message, nextState: result.nextState };
 }
 
-export function mockEvaluation(scenario: Scenario, messages: ChatMessage[]): EvaluationResult {
-  return evaluateMockDialog(scenario, messages);
+export function mockEvaluation(scenario: Scenario, messages: ChatMessage[], promptContext?: TrainingPromptContext): EvaluationResult {
+  return evaluateMockDialog(scenario, messages, promptContext);
 }

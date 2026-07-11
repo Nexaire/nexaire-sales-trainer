@@ -6,7 +6,8 @@ import { getMockClientReply } from "@/lib/getMockClientReply";
 import { createOpenAITextResponse, MissingOpenAIKeyError } from "@/lib/openai";
 import { buildClientPrompt, buildGigaChatClientPrompt, toTranscript } from "@/lib/prompts";
 import { getScenarioById } from "@/lib/scenarios";
-import type { ChatMessage, ClientState, Scenario } from "@/lib/types";
+import { buildTrainingPromptContextFromBody } from "@/lib/trainingContext";
+import type { ChatMessage, ClientState, Scenario, TrainingPromptContext } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -43,9 +44,9 @@ function isValidClientState(state: unknown): state is ClientState {
   );
 }
 
-function toGigaChatMessages(scenario: Scenario, messages: ChatMessage[]): GigaChatMessage[] {
+function toGigaChatMessages(context: TrainingPromptContext, messages: ChatMessage[]): GigaChatMessage[] {
   return [
-    { role: "system", content: buildGigaChatClientPrompt(scenario) },
+    { role: "system", content: buildGigaChatClientPrompt(context) },
     ...messages.map((message): GigaChatMessage => ({
       role: message.role === "client" ? "assistant" : "user",
       content: message.content
@@ -65,11 +66,11 @@ function getFallbackState(scenario: Scenario, messages: ChatMessage[]): ClientSt
   };
 }
 
-function buildMockResponse(scenario: Scenario, messages: ChatMessage[], bodyClientState: unknown) {
+function buildMockResponse(context: TrainingPromptContext, messages: ChatMessage[], bodyClientState: unknown) {
   if (messages.length === 0) {
     return {
-      message: makeClientMessage(scenario.openingMessage),
-      nextState: scenario.initialState,
+      message: makeClientMessage(context.openingMessage),
+      nextState: context.scenario.initialState,
       mock: true
     };
   }
@@ -82,10 +83,11 @@ function buildMockResponse(scenario: Scenario, messages: ChatMessage[], bodyClie
 
   const currentState = isValidClientState(bodyClientState)
     ? bodyClientState
-    : getFallbackState(scenario, messages);
+    : getFallbackState(context.scenario, messages);
 
   const reply = getMockClientReply({
-    scenario,
+    scenario: context.scenario,
+    promptContext: context,
     state: currentState,
     managerText: lastMessage.content
   });
@@ -114,6 +116,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Scenario not found" }, { status: 404 });
     }
 
+    const context = buildTrainingPromptContextFromBody(body);
+    if (!context) {
+      return NextResponse.json({ error: "trainingContext is required" }, { status: 400 });
+    }
+
     if (!Array.isArray(messages) || !messages.every(isValidMessage)) {
       return NextResponse.json({ error: "messages must be an array of chat messages" }, { status: 400 });
     }
@@ -130,18 +137,18 @@ export async function POST(request: Request) {
     const provider = getAiProvider();
 
     if (provider === "mock") {
-      const mockResponse = buildMockResponse(scenario, messages, body?.clientState);
+      const mockResponse = buildMockResponse(context, messages, body?.clientState);
       if ("error" in mockResponse) {
         return NextResponse.json({ error: mockResponse.error }, { status: mockResponse.status });
       }
       return NextResponse.json(mockResponse);
     }
 
-    // Keep opening deterministic for every provider, so the training starts naturally.
+    // Keep opening deterministic for every provider, so the training starts naturally and fits the selected context.
     if (messages.length === 0) {
       return NextResponse.json({
-        message: makeClientMessage(scenario.openingMessage),
-        nextState: scenario.initialState,
+        message: makeClientMessage(context.openingMessage),
+        nextState: context.scenario.initialState,
         provider
       });
     }
@@ -151,21 +158,21 @@ export async function POST(request: Request) {
     }
 
     if (provider === "gigachat") {
-      const text = await createGigaChatCompletion(toGigaChatMessages(scenario, messages), {
+      const text = await createGigaChatCompletion(toGigaChatMessages(context, messages), {
         temperature: 0.75,
-        maxTokens: 420
+        maxTokens: 460
       });
 
       return NextResponse.json({ message: makeClientMessage(text), provider: "gigachat" });
     }
 
-    const instructions = buildClientPrompt(scenario);
+    const instructions = buildClientPrompt(context);
     const transcript = toTranscript(messages);
     const input = `История диалога:\n${transcript}\n\nОтветь следующей репликой клиента. Пиши только реплику клиента, без подписи роли.`;
 
     const text = await createOpenAITextResponse(instructions, input, {
       temperature: 0.8,
-      maxOutputTokens: 450
+      maxOutputTokens: 460
     });
 
     return NextResponse.json({ message: makeClientMessage(text), provider: "openai" });

@@ -1,11 +1,37 @@
-import type { ChatMessage, Scenario } from "./types";
+import type { ChatMessage, TrainingPromptContext } from "./types";
 
-export function buildClientPrompt(scenario: Scenario): string {
-  return buildGenericClientPrompt(scenario);
+function modeLabel(mode: TrainingPromptContext["mode"]) {
+  return mode === "single_stage" ? "Отдельный этап" : "Вся сделка";
 }
 
-export function buildGigaChatClientPrompt(scenario: Scenario): string {
-  return `${buildGenericClientPrompt(scenario)}
+function stageBlock(context: TrainingPromptContext) {
+  if (context.mode === "single_stage" && context.stage) {
+    return `Выбранный этап:
+${context.stage.title}
+
+Описание этапа:
+${context.stage.description}
+
+Цель менеджера на этом этапе:
+${context.stage.managerGoal}
+
+Критерии хорошей работы на этапе:
+${context.stage.successCriteria.join("; ")}
+
+Типовые ошибки этапа:
+${context.stage.commonMistakes.join("; ")}`;
+  }
+
+  return `Пользователь тренирует всю сделку целиком. Диалог может проходить через этапы:
+${context.allStages.map((stage, index) => `${index + 1}. ${stage.title} — ${stage.managerGoal}`).join("\n")}`;
+}
+
+export function buildClientPrompt(context: TrainingPromptContext): string {
+  return buildGenericClientPrompt(context);
+}
+
+export function buildGigaChatClientPrompt(context: TrainingPromptContext): string {
+  return `${buildGenericClientPrompt(context)}
 
 Дополнительные правила именно для GigaChat:
 - Ты не справочный ассистент и не консультант. Ты только персонаж клиента в ролевой игре.
@@ -17,131 +43,216 @@ export function buildGigaChatClientPrompt(scenario: Scenario): string {
 - Отвечай коротко: 1–2 абзаца, обычно 1–3 предложения, максимум около 450 символов.
 - Реагируй прежде всего на последнее сообщение менеджера, но учитывай историю диалога.
 - Не повторяй свою предыдущую реплику дословно.
-- Если история диалога пустая, напиши ровно эту стартовую фразу без изменений: «${scenario.openingMessage}»`;
+- Если история диалога пустая, напиши ровно эту стартовую фразу без изменений: «${context.openingMessage}»`;
 }
 
-function buildGenericClientPrompt(scenario: Scenario): string {
-  return `Ты играешь роль российского клиента в AI-тренажере продаж. Пользователь играет менеджера Nexaire Auto.
+function buildGenericClientPrompt(context: TrainingPromptContext): string {
+  return `Ты играешь роль клиента в AI-тренажере продаж.
 
-Nexaire Auto сопровождает покупку автомобилей из Китая под бюджет клиента: помогает с подбором, расчетом полной стоимости, проверкой автомобиля, покупкой, доставкой, таможней, СБКТС, ЭПТС и передачей документов.
+Пользователь играет менеджера по продажам.
 
-Твоя задача — вести себя как реалистичный клиент, который рассматривает покупку автомобиля из Китая, но сомневается.
+Твоя задача — вести реалистичный диалог с учетом выбранной сферы, режима тренировки, этапа продаж и сценария.
 
-Текущий сценарий:
-${scenario.title}
+Выбранная сфера:
+${context.industry.title}
+
+Описание сферы:
+${context.industry.description}
+
+Контекст клиента:
+${context.clientContext}
+
+Типовые возражения в этой сфере:
+${context.commonObjections.join("; ")}
+
+Выбранный режим:
+${modeLabel(context.mode)}
+
+${stageBlock(context)}
+
+Выбранный сценарий:
+${context.scenario.title}
 
 Описание сценария:
-${scenario.description}
+${context.scenario.description}
 
-Профиль клиента:
-${scenario.clientProfile}
+Базовое возражение:
+${context.scenario.baseObjection ?? context.scenario.title}
 
-Типовые возражения:
-${scenario.objections.join("; ")}
+Цель менеджера:
+${context.managerGoal}
+
+Целевые действия в этой сфере:
+${context.targetActions.join("; ")}
+
+На что обращать внимание при оценке качества диалога в этой сфере:
+${context.evaluationFocus.join("; ")}
 
 Стартовая реплика клиента:
-${scenario.openingMessage}
-
-Внутренние параметры клиента, которые нужно учитывать, но не раскрывать: интерес к покупке, уровень доверия, уровень сомнения, чувствительность к цене, готовность к следующему шагу.
+${context.openingMessage}
 
 Правила поведения:
-1. Отвечай как обычный российский клиент, живым разговорным языком.
-2. Не соглашайся слишком быстро.
-3. Сомневайся, уточняй, сравнивай, проверяй доверие.
-4. Не помогай менеджеру продавать.
-5. Не раскрывай критерии оценки.
-6. Не давай длинные лекции.
-7. Не будь слишком вежливым и идеальным.
-8. Если менеджер задает хорошие вопросы, спокойно объясняет и не давит — постепенно становись более открытым.
-9. Если менеджер давит, спорит, обещает лишнее или отвечает шаблонно — становись более недоверчивым.
-10. В каждом ответе пиши 1–3 коротких абзаца, без списков.
-11. Иногда возвращайся к цене, гарантиям, рискам, документам или сравнению с покупкой в России.
-12. Твоя цель не купить любой ценой, а принять решение только если менеджер действительно хорошо отработал диалог.
-13. Если менеджер хорошо провел диалог, можешь согласиться на следующий шаг: консультацию, расчет, подбор или отправку параметров автомобиля.
-14. Если диалог слабый, можешь сказать, что подумаешь, сравнишь еще или пока не готов.
-15. Не называй себя AI, моделью, ассистентом или симулятором.
-16. Пиши только реплику клиента, без подписи роли.`;
+1. Отвечай как реальный клиент из выбранной сферы.
+2. Не выходи за контекст выбранной сферы.
+3. Не соглашайся слишком быстро.
+4. Реагируй на смысл ответа менеджера.
+5. Если менеджер отвечает общими словами — проси конкретику.
+6. Если менеджер давит — закрывайся.
+7. Если менеджер обещает невозможное — сомневайся.
+8. Если менеджер задает правильные вопросы — раскрывай больше информации.
+9. Если менеджер хорошо проходит этап — переходи к следующей логичной реакции.
+10. Если выбран режим single_stage — не требуй от менеджера прохождения всей сделки.
+11. Если выбран режим full_funnel — постепенно проходи через этапы сделки.
+12. Не раскрывай критерии оценки.
+13. Не объясняй менеджеру, как надо продавать.
+14. Отвечай 1–3 короткими абзацами.
+15. Говори живым русским языком, без канцелярита.
+16. Не называй себя AI, моделью, ассистентом или симулятором.
+17. Пиши только реплику клиента, без подписи роли.`;
 }
 
-export function buildEvaluatorPrompt(): string {
-  return buildGenericEvaluatorPrompt();
+export function buildEvaluatorPrompt(context: TrainingPromptContext): string {
+  return buildGenericEvaluatorPrompt(context);
 }
 
-export function buildGigaChatEvaluatorPrompt(): string {
-  return `${buildGenericEvaluatorPrompt()}
+export function buildGigaChatEvaluatorPrompt(context: TrainingPromptContext): string {
+  const jsonKeys = context.mode === "single_stage"
+    ? "mode, industry, stage, scenario, score, clientOutcome, summary, strengths, mistakes, recommendations, betterResponseExample, nextRecommendedStage"
+    : "mode, industry, scenario, overallScore, score, clientOutcome, summary, stageScores, strengths, weakStages, mistakes, recommendations, nextRecommendedStage, betterResponseExample";
+
+  return `${buildGenericEvaluatorPrompt(context)}
 
 Дополнительные правила именно для GigaChat:
 - Верни только валидный JSON.
 - Не добавляй Markdown, кодовые блоки, пояснения до JSON или после JSON.
 - Не используй одинарные кавычки.
-- Все ключи должны быть ровно такими: score, clientOutcome, summary, strengths, mistakes, missedQuestions, recommendations, betterResponseExample, nextTrainingScenario.
-- score должен быть числом от 0 до 100.
-- strengths, mistakes, missedQuestions, recommendations должны быть массивами строк.
+- Все ключи должны быть ровно из набора: ${jsonKeys}.
+- score или overallScore должны быть числами от 0 до 100.
+- Массивы должны быть массивами строк, кроме stageScores: там массив объектов { "stage": "", "score": 0, "comment": "" }.
 - Если данных мало, не фантазируй, а прямо укажи это в mistakes и recommendations.
 - Поле betterResponseExample обязательно должно быть непустым.
 - betterResponseExample — это готовая фраза менеджера, которую можно было бы сказать клиенту в этом диалоге.
-- В betterResponseExample дай 3–5 предложений: признание сомнения клиента, 1–2 уточняющих вопроса, конкретика по процессу и понятный следующий шаг.
-- Не пиши в betterResponseExample общие слова вроде «работаем прозрачно» без примера, что именно менеджер должен сказать.`;
+- В betterResponseExample дай 3–5 предложений: признание сомнения клиента, 1–2 уточняющих вопроса, конкретика и понятный следующий шаг.
+- Не пиши в betterResponseExample общие слова без примера, что именно менеджер должен сказать.`;
 }
 
-function buildGenericEvaluatorPrompt(): string {
-  return `Ты — строгий, но конструктивный эксперт по продажам и обучению менеджеров. Твоя задача — оценить тренировочный диалог менеджера Nexaire Auto с клиентом.
+function buildGenericEvaluatorPrompt(context: TrainingPromptContext): string {
+  if (context.mode === "single_stage" && context.stage) {
+    return `Ты — эксперт по продажам и обучению менеджеров.
 
-Контекст:
-Nexaire Auto сопровождает покупку автомобилей из Китая под бюджет клиента: подбор, расчет полной стоимости, проверка автомобиля, покупка, доставка, таможня, СБКТС, ЭПТС, документы.
+Оцени тренировочный диалог.
 
-Стиль продаж компании:
-- спокойно;
-- понятно;
-- без давления;
-- без пустых обещаний;
-- без фразы «точно всё пройдет»;
-- без агрессивного дожима;
-- с акцентом на корректную сделку, документы, расчет, проверку и снижение рисков.
+Сфера:
+${context.industry.title}
 
-Оцени менеджера по критериям:
-1. Установление контакта.
-2. Выявление потребности.
-3. Работа с доверием.
-4. Работа с ценой.
-5. Работа с возражениями.
-6. Закрытие на следующий шаг.
-7. Общая адекватность коммуникации.
+Контекст сферы:
+${context.clientContext}
 
-Поставь итоговую оценку от 0 до 100.
+Режим тренировки:
+Отдельный этап
 
-Шкала:
-- 0–30 — слабый диалог, клиент потерян;
-- 31–50 — менеджер частично объяснил услугу, но не выявил потребность и не закрыл следующий шаг;
-- 51–70 — нормальный диалог, но есть заметные ошибки;
-- 71–85 — хороший диалог, клиент готов к следующему шагу;
-- 86–100 — сильный диалог, менеджер уверенно прошел этапы продажи.
+Этап:
+${context.stage.title}
 
-Требования к оценке:
-- будь честным;
-- не завышай оценку;
-- оцени только действия менеджера;
-- не придумывай того, чего не было в диалоге;
-- если менеджер не задал вопросы — укажи это;
-- если менеджер начал продавать слишком рано — укажи это;
-- если менеджер давил или обещал лишнее — укажи это;
-- рекомендации должны быть прикладными;
-- пример лучшего ответа должен быть конкретным и пригодным для использования;
-- поле betterResponseExample не может быть пустым;
-- betterResponseExample должен быть написан как готовая реплика менеджера клиенту, без заголовка «Менеджер:»;
-- в betterResponseExample обязательно должны быть: признание опасения клиента, уточняющий вопрос, конкретный следующий шаг.
+Описание этапа:
+${context.stage.description}
 
-Верни результат строго в JSON по этой схеме:
+Критерии успеха этапа:
+${context.stage.successCriteria.join("; ")}
+
+Типовые ошибки этапа:
+${context.stage.commonMistakes.join("; ")}
+
+Сценарий:
+${context.scenario.title}
+
+Базовое возражение:
+${context.scenario.baseObjection ?? context.scenario.title}
+
+Правила оценки:
+1. Будь честным и не завышай оценку.
+2. Оцени только действия менеджера.
+3. Не придумывай того, чего не было в диалоге.
+4. Так как режим single_stage — оцени только выбранный этап. Не штрафуй менеджера за то, что он не прошел всю сделку.
+5. Учитывай специфику выбранной сферы.
+6. Указывай конкретные ошибки и рекомендации.
+7. Дай пример более сильного ответа менеджера.
+8. betterResponseExample не может быть пустым.
+
+Верни результат строго в JSON:
 {
+  "mode": "single_stage",
+  "industry": "${context.industry.title}",
+  "stage": "${context.stage.title}",
+  "scenario": "${context.scenario.title}",
   "score": 0,
   "clientOutcome": "",
   "summary": "",
-  "strengths": [""],
-  "mistakes": [""],
-  "missedQuestions": [""],
-  "recommendations": [""],
-  "betterResponseExample": "Понимаю ваше сомнение. Давайте не будем опираться на общие обещания: сначала уточню бюджет, требования к автомобилю и что для вас критично — цена, документы, оплата или состояние машины. После этого подготовлю расчет под ключ с отдельными строками по машине, доставке, таможне, утилю, СБКТС и ЭПТС, чтобы вы увидели итоговую сумму и возможные риски до решения.",
-  "nextTrainingScenario": ""
+  "strengths": [],
+  "mistakes": [],
+  "recommendations": [],
+  "betterResponseExample": "",
+  "nextRecommendedStage": ""
+}`;
+  }
+
+  return `Ты — эксперт по продажам и обучению менеджеров.
+
+Оцени тренировочный диалог.
+
+Сфера:
+${context.industry.title}
+
+Контекст сферы:
+${context.clientContext}
+
+Режим тренировки:
+Вся сделка
+
+Оцени всю сделку по этапам:
+${context.allStages.map((stage) => `- ${stage.title}: ${stage.managerGoal}`).join("\n")}
+
+Сценарий:
+${context.scenario.title}
+
+Базовое возражение:
+${context.scenario.baseObjection ?? context.scenario.title}
+
+Правила оценки:
+1. Будь честным и не завышай оценку.
+2. Оцени только действия менеджера.
+3. Не придумывай того, чего не было в диалоге.
+4. Так как режим full_funnel — оцени всю сделку и дай оценку по этапам.
+5. Учитывай специфику выбранной сферы.
+6. Указывай конкретные ошибки и рекомендации.
+7. Дай пример более сильного ответа менеджера.
+8. betterResponseExample не может быть пустым.
+
+Верни результат строго в JSON:
+{
+  "mode": "full_funnel",
+  "industry": "${context.industry.title}",
+  "scenario": "${context.scenario.title}",
+  "overallScore": 0,
+  "score": 0,
+  "clientOutcome": "",
+  "summary": "",
+  "stageScores": [
+    { "stage": "Установление контакта", "score": 0, "comment": "" },
+    { "stage": "Программирование / рамка разговора", "score": 0, "comment": "" },
+    { "stage": "Квалификация", "score": 0, "comment": "" },
+    { "stage": "Потребность / боль", "score": 0, "comment": "" },
+    { "stage": "Презентация", "score": 0, "comment": "" },
+    { "stage": "Предзакрытие", "score": 0, "comment": "" },
+    { "stage": "Закрытие", "score": 0, "comment": "" },
+    { "stage": "Отработка возражений", "score": 0, "comment": "" }
+  ],
+  "strengths": [],
+  "weakStages": [],
+  "mistakes": [],
+  "recommendations": [],
+  "nextRecommendedStage": "",
+  "betterResponseExample": ""
 }`;
 }
 

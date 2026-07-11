@@ -1,5 +1,5 @@
 import { analyzeManagerMessage, type ManagerMessageAnalysis } from "./analyzeManagerMessage";
-import type { ClientState, MockClientResponseRule, Scenario, ScenarioStage } from "./types";
+import type { ClientState, MockClientResponseRule, Scenario, ScenarioStage, TrainingPromptContext } from "./types";
 
 export type MockClientReplyResult = {
   message: string;
@@ -134,16 +134,196 @@ function buildReply(
   };
 }
 
+function getContextualSuccessReply(context: TrainingPromptContext) {
+  const action = context.targetActions[0] ?? "следующий шаг";
+  if (context.mode === "single_stage" && context.stage) {
+    return `Окей, такой шаг звучит нормально. Давайте начнем с «${action}», а дальше я уже пойму, подходит мне формат или нет.`;
+  }
+
+  return `Хорошо, давайте начнем с понятного следующего шага — ${action}. Что от меня нужно сейчас?`;
+}
+
+function getContextualNeutralReply(context: TrainingPromptContext) {
+  const action = context.targetActions[0] ?? "следующий шаг";
+  return `Я понял вашу логику. Пока не готов решать сразу, но могу вернуться к разговору, если будет простой следующий шаг без обязательств — например, ${action}.`;
+}
+
+function getContextualFailureReply(context: TrainingPromptContext) {
+  return `Пока мои сомнения не сняты. Вы говорите в целом понятно, но я не увидел конкретики под мою ситуацию в сфере «${context.industry.title}».`;
+}
+
+function getContextualDisclosure(context: TrainingPromptContext) {
+  if (context.industry.id === "online_courses") return "Сейчас я думаю об обучении, но сомневаюсь из-за цены, времени и результата. Хочется понять, что реально изменится после курса.";
+  if (context.industry.id === "real_estate") return "Я смотрю варианты, но боюсь ошибиться с объектом и бюджетом. Еще нужно будет обсудить это с семьей.";
+  if (context.industry.id === "psychology") return "Наверное, главное сомнение — поможет ли мне это и сколько встреч понадобится. Давления я точно не хочу.";
+  if (context.industry.id === "equipment_b2b") return "У нас есть текущий поставщик, поэтому мне важно понять разницу по срокам, сервису, гарантии и согласованию с руководством.";
+  return "Бюджет примерно до 2,3 млн под ключ. Главное — чтобы без скрытых доплат и проблем с документами.";
+}
+
+function buildContextualReply(
+  context: TrainingPromptContext,
+  state: ClientState,
+  managerText: string,
+  analysis: ManagerMessageAnalysis
+): MockClientReplyResult | undefined {
+  if (context.industry.id === "auto" && context.mode === "full_funnel") {
+    return undefined;
+  }
+
+  const stageLabel = context.mode === "single_stage" && context.stage ? ` по этапу «${context.stage.title.toLowerCase()}»` : "";
+  const concern = context.commonObjections[0] ?? context.scenario.baseObjection ?? context.scenario.title;
+
+  if (analysis.madeOverpromise) {
+    return buildReply(
+      context.scenario,
+      undefined,
+      state,
+      analysis,
+      `Вот такие обещания меня и настораживают. В моей ситуации важно понять не гарантии на словах, а что именно вы проверяете и как снижаете риск${stageLabel}.`,
+      { trust: -15, doubt: 15, readiness: -10 },
+      "trust_check"
+    );
+  }
+
+  if (analysis.pushedTooHard) {
+    return buildReply(
+      context.scenario,
+      undefined,
+      state,
+      analysis,
+      "Не очень люблю, когда меня подталкивают к решению. Я хочу спокойно разобраться и понять, подходит ли мне это.",
+      { trust: -10, doubt: 10, readiness: -10 },
+      state.stage
+    );
+  }
+
+  if (analysis.criticizedCompetitor) {
+    return buildReply(
+      context.scenario,
+      undefined,
+      state,
+      analysis,
+      "Не хочу сравнивать в формате “они плохие, вы хорошие”. Мне важнее понять конкретную разницу в подходе и результате.",
+      { trust: -8, doubt: 8, readiness: -5 },
+      "main_objection"
+    );
+  }
+
+  if (analysis.mentionedNextStep && state.trust >= 55 && state.readiness >= 42) {
+    return buildReply(
+      context.scenario,
+      undefined,
+      state,
+      analysis,
+      getContextualSuccessReply(context),
+      { trust: 10, doubt: -10, readiness: 20 },
+      "close",
+      "success"
+    );
+  }
+
+  if (analysis.mentionedNextStep && state.turn <= 2 && state.trust < 55) {
+    return buildReply(
+      context.scenario,
+      undefined,
+      state,
+      analysis,
+      `Пока рано переходить к следующему шагу. Сначала хочу понять, как это решит мое главное сомнение: ${concern}.`,
+      { trust: -3, doubt: 4, readiness: -4 },
+      "main_objection"
+    );
+  }
+
+  if (analysis.askedQuestion && (analysis.mentionedBudget || analysis.mentionedPrice || analysis.askedConcern)) {
+    return buildReply(
+      context.scenario,
+      undefined,
+      state,
+      analysis,
+      getContextualDisclosure(context),
+      { trust: 8, doubt: -5, interest: 6, readiness: 8 },
+      "clarification"
+    );
+  }
+
+  if ((analysis.isTooShort && !analysis.askedQuestion) || (!analysis.isSpecific && !analysis.askedQuestion && !analysis.empathy)) {
+    return buildReply(
+      context.scenario,
+      undefined,
+      state,
+      analysis,
+      `Пока звучит слишком общо. Можете объяснить конкретнее именно для моей ситуации: ${context.clientContext.toLowerCase()}`,
+      { trust: -5, doubt: 5, readiness: -5 },
+      state.stage === "opening" ? "main_objection" : state.stage
+    );
+  }
+
+  if (analysis.isSpecific || analysis.mentionedCalculation || analysis.mentionedRisks || analysis.mentionedCheck || analysis.mentionedDocuments) {
+    return buildReply(
+      context.scenario,
+      undefined,
+      state,
+      analysis,
+      `Так уже понятнее. Тогда следующий вопрос: как я пойму, что это решение действительно подходит под мою задачу, а не просто выглядит правильно в презентации?`,
+      { trust: 9, doubt: -7, readiness: 9 },
+      "trust_check"
+    );
+  }
+
+  if (state.turn >= 6 && state.readiness < 60) {
+    return buildReply(
+      context.scenario,
+      undefined,
+      state,
+      analysis,
+      getContextualNeutralReply(context),
+      { readiness: -5 },
+      "close",
+      "neutral"
+    );
+  }
+
+  if (state.trust <= 25) {
+    return buildReply(
+      context.scenario,
+      undefined,
+      state,
+      analysis,
+      getContextualFailureReply(context),
+      { trust: -5, doubt: 5, readiness: -10 },
+      "close",
+      "failure"
+    );
+  }
+
+  return buildReply(
+    context.scenario,
+    undefined,
+    state,
+    analysis,
+    `Я готов продолжить, но хочу больше конкретики по моей сфере и по сценарию «${context.scenario.title.toLowerCase()}». Что вы предлагаете сделать первым шагом?`,
+    { trust: 2, doubt: -2, readiness: 2 },
+    state.stage
+  );
+}
+
 export function getMockClientReply({
   scenario,
+  promptContext,
   state,
   managerText
 }: {
   scenario: Scenario;
+  promptContext?: TrainingPromptContext;
   state: ClientState;
   managerText: string;
 }): MockClientReplyResult {
   const analysis = analyzeManagerMessage(managerText);
+
+  const contextualReply = promptContext ? buildContextualReply(promptContext, state, managerText, analysis) : undefined;
+  if (contextualReply) {
+    return contextualReply;
+  }
 
   if (state.stage === "close") {
     return buildReply(

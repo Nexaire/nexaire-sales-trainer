@@ -1,4 +1,47 @@
 export type ScenarioDifficulty = "easy" | "medium" | "hard";
+
+export type TrainingMode = "full_funnel" | "single_stage";
+
+export type Industry = {
+  id: string;
+  title: string;
+  description: string;
+  clientContext: string;
+  commonObjections: string[];
+  evaluationFocus: string[];
+  targetActions: string[];
+};
+
+export type SalesStage = {
+  id: string;
+  title: string;
+  description: string;
+  managerGoal: string;
+  successCriteria: string[];
+  commonMistakes: string[];
+};
+
+export type TrainingContext = {
+  industryId: string;
+  mode: TrainingMode;
+  stageId?: string;
+  scenarioId: string;
+};
+
+export type TrainingPromptContext = {
+  industry: Industry;
+  mode: TrainingMode;
+  stage?: SalesStage;
+  allStages: SalesStage[];
+  scenario: Scenario;
+  managerGoal: string;
+  clientContext: string;
+  commonObjections: string[];
+  evaluationFocus: string[];
+  targetActions: string[];
+  openingMessage: string;
+};
+
 export type ChatRole = "manager" | "client";
 
 export type ScenarioStage =
@@ -37,6 +80,7 @@ export type Scenario = {
   id: string;
   title: string;
   description: string;
+  baseObjection?: string;
   managerGoal: string;
   clientProfile: string;
   objections: string[];
@@ -59,16 +103,30 @@ export type ChatMessage = {
   createdAt: string;
 };
 
-export type EvaluationResult = {
+export type StageScore = {
+  stage: string;
   score: number;
+  comment: string;
+};
+
+export type EvaluationResult = {
+  mode?: TrainingMode;
+  industry?: string;
+  stage?: string;
+  scenario?: string;
+  score: number;
+  overallScore?: number;
   clientOutcome: string;
   summary: string;
+  stageScores?: StageScore[];
   strengths: string[];
+  weakStages?: string[];
   mistakes: string[];
-  missedQuestions: string[];
+  missedQuestions?: string[];
   recommendations: string[];
-  betterResponseExample: string;
-  nextTrainingScenario: string;
+  betterResponseExample?: string;
+  nextTrainingScenario?: string;
+  nextRecommendedStage?: string;
 };
 
 export type LeadPayload = {

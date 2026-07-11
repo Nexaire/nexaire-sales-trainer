@@ -2,10 +2,13 @@
 
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { ChatMessage, ClientState, Scenario } from "@/lib/types";
+import type { ChatMessage, ClientState, Scenario, TrainingContext, TrainingPromptContext } from "@/lib/types";
+import { getTrainingStorageSuffix, serializeTrainingContext } from "@/lib/trainingContext";
 
 type Props = {
   scenario: Scenario;
+  trainingContext: TrainingContext;
+  promptContext: TrainingPromptContext;
 };
 
 function createMessageId() {
@@ -16,18 +19,24 @@ function createMessageId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-export default function ChatTrainer({ scenario }: Props) {
+function modeLabel(context: TrainingPromptContext) {
+  return context.mode === "single_stage" ? "Отдельный этап" : "Вся сделка";
+}
+
+export default function ChatTrainer({ scenario, trainingContext, promptContext }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const shouldStartNew = searchParams.get("new") === "1";
-  const storageKey = useMemo(() => `nexaire-trainer-session-${scenario.id}`, [scenario.id]);
-  const stateStorageKey = useMemo(() => `nexaire-trainer-client-state-${scenario.id}`, [scenario.id]);
+  const storageSuffix = useMemo(() => getTrainingStorageSuffix(trainingContext), [trainingContext]);
+  const storageKey = useMemo(() => `nexaire-trainer-session-${storageSuffix}`, [storageSuffix]);
+  const stateStorageKey = useMemo(() => `nexaire-trainer-client-state-${storageSuffix}`, [storageSuffix]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [clientState, setClientState] = useState<ClientState>(scenario.initialState);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const chatWindowRef = useRef<HTMLDivElement | null>(null);
+  const queryString = useMemo(() => serializeTrainingContext(trainingContext), [trainingContext]);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,7 +77,7 @@ export default function ChatTrainer({ scenario }: Props) {
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ scenarioId: scenario.id, messages: [], clientState: scenario.initialState })
+          body: JSON.stringify({ scenarioId: scenario.id, trainingContext, messages: [], clientState: scenario.initialState })
         });
 
         const data = await response.json();
@@ -88,7 +97,7 @@ export default function ChatTrainer({ scenario }: Props) {
             {
               id: createMessageId(),
               role: "client",
-              content: scenario.openingMessage,
+              content: promptContext.openingMessage,
               createdAt: new Date().toISOString()
             }
           ]);
@@ -105,7 +114,7 @@ export default function ChatTrainer({ scenario }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [scenario.id, scenario.initialState, scenario.openingMessage, shouldStartNew, storageKey, stateStorageKey]);
+  }, [scenario.id, scenario.initialState, promptContext.openingMessage, shouldStartNew, storageKey, stateStorageKey, trainingContext]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -120,9 +129,7 @@ export default function ChatTrainer({ scenario }: Props) {
   useEffect(() => {
     const chatWindow = chatWindowRef.current;
 
-    if (!chatWindow) {
-      return;
-    }
+    if (!chatWindow) return;
 
     requestAnimationFrame(() => {
       chatWindow.scrollTo({ top: chatWindow.scrollHeight, behavior: "smooth" });
@@ -132,9 +139,7 @@ export default function ChatTrainer({ scenario }: Props) {
   async function sendMessage() {
     const cleanInput = input.trim();
 
-    if (!cleanInput || loading) {
-      return;
-    }
+    if (!cleanInput || loading) return;
 
     if (cleanInput.length > 2000) {
       setError("Сообщение слишком длинное. Сократите его до 2000 символов.");
@@ -158,7 +163,7 @@ export default function ChatTrainer({ scenario }: Props) {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenarioId: scenario.id, messages: nextMessages, clientState })
+        body: JSON.stringify({ scenarioId: scenario.id, trainingContext, messages: nextMessages, clientState })
       });
 
       const data = await response.json();
@@ -168,9 +173,7 @@ export default function ChatTrainer({ scenario }: Props) {
       }
 
       setMessages((currentMessages) => [...currentMessages, data.message]);
-      if (data.nextState) {
-        setClientState(data.nextState);
-      }
+      if (data.nextState) setClientState(data.nextState);
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : "AI-клиент не ответил");
     } finally {
@@ -194,18 +197,13 @@ export default function ChatTrainer({ scenario }: Props) {
     const managerMessagesCount = messages.filter((message) => message.role === "manager").length;
 
     if (managerMessagesCount < 2) {
-      const confirmed = window.confirm(
-        "Диалог выглядит слишком коротким. Оценка будет неполной. Завершить сейчас?"
-      );
-
-      if (!confirmed) {
-        return;
-      }
+      const confirmed = window.confirm("Диалог выглядит слишком коротким. Оценка будет неполной. Завершить сейчас?");
+      if (!confirmed) return;
     }
 
     localStorage.setItem(
       "nexaire-trainer-last-dialogue",
-      JSON.stringify({ scenarioId: scenario.id, messages, clientState, finishedAt: new Date().toISOString() })
+      JSON.stringify({ scenarioId: scenario.id, trainingContext, messages, clientState, finishedAt: new Date().toISOString() })
     );
 
     router.push(`/result?scenario=${scenario.id}`);
@@ -214,7 +212,7 @@ export default function ChatTrainer({ scenario }: Props) {
   function restart() {
     localStorage.removeItem(storageKey);
     localStorage.removeItem(stateStorageKey);
-    router.push(`/train/${scenario.id}?new=1`);
+    router.push(`/train/${scenario.id}?${queryString}`);
   }
 
   const managerMessagesCount = messages.filter((message) => message.role === "manager").length;
@@ -222,19 +220,26 @@ export default function ChatTrainer({ scenario }: Props) {
   return (
     <section className="section trainer-section">
       <aside className="trainer-sidebar">
-        <a className="back-link" href="/scenarios">← Все сценарии</a>
-        <p className="eyebrow">Сценарий</p>
+        <a className="back-link" href="/scenarios">← Настроить тренировку</a>
+        <p className="eyebrow">Тренировка</p>
         <h1>{scenario.title}</h1>
         <p>{scenario.description}</p>
 
-        <div className="sidebar-block">
-          <h2>Цель менеджера</h2>
-          <p>{scenario.managerGoal}</p>
+        <div className="context-list">
+          <span>Сфера: <strong>{promptContext.industry.title}</strong></span>
+          <span>Режим: <strong>{modeLabel(promptContext)}</strong></span>
+          {promptContext.stage && <span>Этап: <strong>{promptContext.stage.title}</strong></span>}
+          <span>Сценарий: <strong>{scenario.title}</strong></span>
         </div>
 
         <div className="sidebar-block">
-          <h2>Клиент</h2>
-          <p>{scenario.clientProfile}</p>
+          <h2>Цель менеджера</h2>
+          <p>{promptContext.managerGoal}</p>
+        </div>
+
+        <div className="sidebar-block">
+          <h2>Контекст клиента</h2>
+          <p>{promptContext.clientContext}</p>
         </div>
 
         <div className="message-counter">
@@ -246,7 +251,7 @@ export default function ChatTrainer({ scenario }: Props) {
         <div className="chat-head">
           <div>
             <p className="eyebrow">Чат с AI-клиентом</p>
-            <h2>Nexaire Auto · тренировочный диалог</h2>
+            <h2>{promptContext.industry.title} · {modeLabel(promptContext)}</h2>
           </div>
           <button className="button button-secondary" type="button" onClick={restart}>
             Начать заново
