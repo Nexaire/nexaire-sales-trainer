@@ -44,6 +44,8 @@ export type TrainingPromptContext = {
 
 export type ChatRole = "manager" | "client";
 
+export type DialogOutcome = "success" | "neutral" | "failure";
+
 export type ScenarioStage =
   | "opening"
   | "clarification"
@@ -64,6 +66,7 @@ export type ClientState = {
   lastReplyId?: string;
   lastReplyText?: string;
   recentReplyIds?: string[];
+  outcome?: DialogOutcome;
 };
 
 export type MockClientResponseRule = {

@@ -23,6 +23,12 @@ function modeLabel(context: TrainingPromptContext) {
   return context.mode === "single_stage" ? "Отдельный этап" : "Вся сделка";
 }
 
+function outcomeLabel(outcome?: ClientState["outcome"]) {
+  if (outcome === "success") return "Клиент согласился на следующий шаг. Диалог можно завершать и переходить к оценке.";
+  if (outcome === "failure") return "Клиент отказался или закрылся. Диалог дошел до финала, переходите к разбору.";
+  return "Диалог дошел до нейтрального финала. Клиент не готов решать сейчас, но результат можно оценить.";
+}
+
 export default function ChatTrainer({ scenario, trainingContext, promptContext }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -37,6 +43,8 @@ export default function ChatTrainer({ scenario, trainingContext, promptContext }
   const [error, setError] = useState("");
   const chatWindowRef = useRef<HTMLDivElement | null>(null);
   const queryString = useMemo(() => serializeTrainingContext(trainingContext), [trainingContext]);
+  const managerMessagesCount = messages.filter((message) => message.role === "manager").length;
+  const dialogueFinished = clientState.stage === "close" || Boolean(clientState.outcome);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,7 +147,7 @@ export default function ChatTrainer({ scenario, trainingContext, promptContext }
   async function sendMessage() {
     const cleanInput = input.trim();
 
-    if (!cleanInput || loading) return;
+    if (!cleanInput || loading || dialogueFinished) return;
 
     if (cleanInput.length > 2000) {
       setError("Сообщение слишком длинное. Сократите его до 2000 символов.");
@@ -215,8 +223,6 @@ export default function ChatTrainer({ scenario, trainingContext, promptContext }
     router.push(`/train/${scenario.id}?${queryString}`);
   }
 
-  const managerMessagesCount = messages.filter((message) => message.role === "manager").length;
-
   return (
     <section className="section trainer-section">
       <aside className="trainer-sidebar">
@@ -270,20 +276,26 @@ export default function ChatTrainer({ scenario, trainingContext, promptContext }
           {loading && <div className="typing">AI-клиент печатает...</div>}
         </div>
 
+        {dialogueFinished && (
+          <div className={`dialogue-finished dialogue-finished-${clientState.outcome ?? "neutral"}`}>
+            <strong>Финал диалога.</strong> {outcomeLabel(clientState.outcome)}
+          </div>
+        )}
+
         <form className="chat-form" onSubmit={handleSubmit}>
           <textarea
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Напишите ответ клиенту..."
+            placeholder={dialogueFinished ? "Диалог завершен. Перейдите к оценке." : "Напишите ответ клиенту..."}
             rows={3}
-            disabled={loading}
+            disabled={loading || dialogueFinished}
           />
           <div className="chat-actions">
             <button className="button button-secondary" type="button" onClick={finishDialogue} disabled={messages.length === 0}>
-              Завершить диалог
+              {dialogueFinished ? "Перейти к оценке" : "Завершить диалог"}
             </button>
-            <button className="button button-primary" type="submit" disabled={!input.trim() || loading}>
+            <button className="button button-primary" type="submit" disabled={!input.trim() || loading || dialogueFinished}>
               {loading ? "Ждем ответ..." : "Отправить"}
             </button>
           </div>

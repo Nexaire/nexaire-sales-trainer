@@ -131,8 +131,34 @@ function buildFallbackBetterResponse(context: TrainingPromptContext, messages: C
   return `${clientContext}Понимаю ваше сомнение. В сфере «${context.industry.title}» решение действительно не стоит принимать на общих словах.${stage} давайте сначала уточним вашу задачу, критерии выбора и что именно сейчас останавливает. После этого я покажу, как решение связано с вашей ситуацией, без давления и лишних обещаний. Если логика подойдет, предложу понятный следующий шаг — ${action}.`;
 }
 
+function parseJsonWithRepair(text: string): Partial<EvaluationResult> {
+  const extracted = extractJson(text);
+
+  try {
+    return JSON.parse(extracted) as Partial<EvaluationResult>;
+  } catch (firstError) {
+    const repaired = extracted
+      .replace(/^\uFEFF/, "")
+      .replace(/[“”]/g, '\"')
+      .replace(/[‘’]/g, "'")
+      .replace(/,\s*([}\]])/g, "$1")
+      .replace(/([}\]\"0-9])\s*\n\s*(\"[A-Za-zА-Яа-яЁё_][^\"\n]*\"\s*:)/g, "$1,\n$2")
+      .replace(/(\"[^\"\n]*\")\s*\n\s*(\"[^\"\n]*\")/g, "$1,\n$2");
+
+    try {
+      return JSON.parse(repaired) as Partial<EvaluationResult>;
+    } catch {
+      throw firstError;
+    }
+  }
+}
+
+function buildLocalEvaluationFallback(scenario: Scenario, messages: ChatMessage[], context: TrainingPromptContext): EvaluationResult {
+  return evaluateMockDialog(scenario, messages, context);
+}
+
 function parseEvaluation(text: string, context: TrainingPromptContext, messages: ChatMessage[]): EvaluationResult {
-  const parsed = JSON.parse(extractJson(text)) as Partial<EvaluationResult>;
+  const parsed = parseJsonWithRepair(text);
   const fallbackBetterResponse = buildFallbackBetterResponse(context, messages);
   const rawScore = context.mode === "full_funnel" ? parsed.overallScore ?? parsed.score : parsed.score;
   const score = normalizeScore(rawScore, 0);
@@ -227,11 +253,13 @@ export async function POST(request: Request) {
       try {
         return NextResponse.json({ evaluation: parseEvaluation(text, context, messages), provider: "gigachat" });
       } catch (parseError) {
-        console.error("GigaChat evaluation JSON parse error", parseError, text);
-        return NextResponse.json(
-          { error: "GigaChat-оценщик вернул некорректный JSON. Попробуйте завершить диалог еще раз." },
-          { status: 502 }
-        );
+        console.error("GigaChat evaluation JSON parse error. Falling back to local evaluator.", parseError, text);
+        return NextResponse.json({
+          evaluation: buildLocalEvaluationFallback(scenario, messages, context),
+          provider: "gigachat",
+          fallback: true,
+          warning: "GigaChat-оценщик вернул некорректный JSON, поэтому показана локальная оценка по правилам тренажера."
+        });
       }
     }
 
@@ -244,11 +272,13 @@ export async function POST(request: Request) {
     try {
       return NextResponse.json({ evaluation: parseEvaluation(text, context, messages), provider: "openai" });
     } catch (parseError) {
-      console.error("Evaluation JSON parse error", parseError, text);
-      return NextResponse.json(
-        { error: "AI-оценщик вернул некорректный JSON. Попробуйте завершить диалог еще раз." },
-        { status: 502 }
-      );
+      console.error("Evaluation JSON parse error. Falling back to local evaluator.", parseError, text);
+      return NextResponse.json({
+        evaluation: buildLocalEvaluationFallback(scenario, messages, context),
+        provider: "openai",
+        fallback: true,
+        warning: "AI-оценщик вернул некорректный JSON, поэтому показана локальная оценка по правилам тренажера."
+      });
     }
   } catch (error) {
     if (error instanceof MissingOpenAIKeyError) {

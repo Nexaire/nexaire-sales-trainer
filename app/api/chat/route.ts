@@ -7,6 +7,7 @@ import { createOpenAITextResponse, MissingOpenAIKeyError } from "@/lib/openai";
 import { buildClientPrompt, buildGigaChatClientPrompt, toTranscript } from "@/lib/prompts";
 import { getScenarioById } from "@/lib/scenarios";
 import { buildTrainingPromptContextFromBody } from "@/lib/trainingContext";
+import { sanitizeClientReply } from "@/lib/sanitizeClientReply";
 import type { ChatMessage, ClientState, Scenario, TrainingPromptContext } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -54,7 +55,7 @@ function toGigaChatMessages(context: TrainingPromptContext, messages: ChatMessag
     {
       role: "user",
       content:
-        "Ответь следующей репликой клиента. Пиши только текст клиента, без подписи роли. Не повторяй предыдущую реплику клиента дословно."
+        "Ответь следующей репликой клиента. Пиши только текст клиента, без подписи роли. Не повторяй предыдущую реплику клиента дословно. Не называй учебные настройки: этап, режим, сценарий, тренировку. Не используй названия этапов продаж: контакт, квалификация, презентация, предзакрытие, закрытие, отработка возражений."
     }
   ];
 }
@@ -69,7 +70,7 @@ function getFallbackState(scenario: Scenario, messages: ChatMessage[]): ClientSt
 function buildMockResponse(context: TrainingPromptContext, messages: ChatMessage[], bodyClientState: unknown) {
   if (messages.length === 0) {
     return {
-      message: makeClientMessage(context.openingMessage),
+      message: makeClientMessage(sanitizeClientReply(context.openingMessage, context)),
       nextState: context.scenario.initialState,
       mock: true
     };
@@ -93,12 +94,28 @@ function buildMockResponse(context: TrainingPromptContext, messages: ChatMessage
   });
 
   return {
-    message: makeClientMessage(reply.message),
+    message: makeClientMessage(sanitizeClientReply(reply.message, context)),
     nextState: reply.nextState,
     analysis: reply.analysis,
     outcome: reply.outcome,
     mock: true
   };
+}
+
+function buildProgressState(context: TrainingPromptContext, messages: ChatMessage[], bodyClientState: unknown) {
+  const lastMessage = messages[messages.length - 1];
+  if (lastMessage?.role !== "manager") return undefined;
+
+  const currentState = isValidClientState(bodyClientState)
+    ? bodyClientState
+    : getFallbackState(context.scenario, messages);
+
+  return getMockClientReply({
+    scenario: context.scenario,
+    promptContext: context,
+    state: currentState,
+    managerText: lastMessage.content
+  });
 }
 
 export async function POST(request: Request) {
@@ -147,7 +164,7 @@ export async function POST(request: Request) {
     // Keep opening deterministic for every provider, so the training starts naturally and fits the selected context.
     if (messages.length === 0) {
       return NextResponse.json({
-        message: makeClientMessage(context.openingMessage),
+        message: makeClientMessage(sanitizeClientReply(context.openingMessage, context)),
         nextState: context.scenario.initialState,
         provider
       });
@@ -162,8 +179,14 @@ export async function POST(request: Request) {
         temperature: 0.75,
         maxTokens: 460
       });
+      const progress = buildProgressState(context, messages, body?.clientState);
 
-      return NextResponse.json({ message: makeClientMessage(text), provider: "gigachat" });
+      return NextResponse.json({
+        message: makeClientMessage(sanitizeClientReply(text, context)),
+        provider: "gigachat",
+        nextState: progress?.nextState,
+        outcome: progress?.outcome
+      });
     }
 
     const instructions = buildClientPrompt(context);
@@ -174,8 +197,14 @@ export async function POST(request: Request) {
       temperature: 0.8,
       maxOutputTokens: 460
     });
+    const progress = buildProgressState(context, messages, body?.clientState);
 
-    return NextResponse.json({ message: makeClientMessage(text), provider: "openai" });
+    return NextResponse.json({
+      message: makeClientMessage(sanitizeClientReply(text, context)),
+      provider: "openai",
+      nextState: progress?.nextState,
+      outcome: progress?.outcome
+    });
   } catch (error) {
     if (error instanceof MissingOpenAIKeyError) {
       return NextResponse.json(

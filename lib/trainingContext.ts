@@ -64,9 +64,29 @@ function buildManagerGoal(context: TrainingContext, prompt: Omit<TrainingPromptC
   return `Провести клиента через ключевые этапы разговора: контакт, рамку, квалификацию, выявление потребности, презентацию, предзакрытие, закрытие и работу с возражениями. Итоговая цель — понятный следующий шаг: ${prompt.industry.targetActions.join(", ")}.`;
 }
 
+function buildFullFunnelOpening(prompt: Pick<TrainingPromptContext, "industry">) {
+  const openings: Record<string, string> = {
+    psychology:
+      "Здравствуйте. Я увидел информацию о консультациях и хочу понять, как вообще проходит первая встреча. Пока просто присматриваюсь.",
+    real_estate:
+      "Здравствуйте. Я смотрю варианты по недвижимости и хочу понять, как вы помогаете с подбором. Пока просто разбираюсь, с чего лучше начать.",
+    online_courses:
+      "Здравствуйте. Я присматриваюсь к обучению и хочу понять, подойдет ли мне ваш формат. Пока просто разбираюсь в вариантах.",
+    auto:
+      "Здравствуйте. Я рассматриваю покупку автомобиля из Китая и хочу понять, как у вас обычно проходит сделка. Пока просто собираю информацию.",
+    equipment_b2b:
+      "Здравствуйте. Мы смотрим варианты по оборудованию и хотим понять, чем вы можете быть полезны. Пока изучаем рынок и предложения."
+  };
+
+  return openings[prompt.industry.id] ?? "Здравствуйте. Я хочу понять, как у вас обычно проходит работа и с чего лучше начать.";
+}
+
 export function buildOpeningMessage(prompt: Pick<TrainingPromptContext, "industry" | "scenario" | "mode" | "stage">) {
+  if (prompt.mode === "full_funnel") {
+    return buildFullFunnelOpening(prompt);
+  }
+
   const objection = getScenarioBaseObjection(prompt.scenario);
-  const stageHint = prompt.mode === "single_stage" && prompt.stage ? ` Сейчас я хочу понять именно этап «${prompt.stage.title.toLowerCase()}».` : "";
 
   const openings: Record<string, Record<string, string>> = {
     expensive: {
@@ -107,7 +127,7 @@ export function buildOpeningMessage(prompt: Pick<TrainingPromptContext, "industr
   };
 
   const message = openings[prompt.scenario.id]?.[prompt.industry.id];
-  return `${message ?? `Я рассматриваю ${prompt.industry.title.toLowerCase()}, но у меня есть сомнение: ${objection}. Объясните, как вы можете помочь?`}${stageHint}`;
+  return message ?? `Я рассматриваю ${prompt.industry.title.toLowerCase()}, но у меня есть сомнение: ${objection}. Объясните, как вы можете помочь?`;
 }
 
 export function buildTrainingPromptContext(context: TrainingContext): TrainingPromptContext {

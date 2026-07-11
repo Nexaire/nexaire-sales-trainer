@@ -1,11 +1,11 @@
 import { analyzeManagerMessage, type ManagerMessageAnalysis } from "./analyzeManagerMessage";
-import type { ClientState, MockClientResponseRule, Scenario, ScenarioStage, TrainingPromptContext } from "./types";
+import type { ClientState, DialogOutcome, MockClientResponseRule, Scenario, ScenarioStage, TrainingPromptContext } from "./types";
 
 export type MockClientReplyResult = {
   message: string;
   nextState: ClientState;
   analysis: ManagerMessageAnalysis;
-  outcome?: "success" | "neutral" | "failure";
+  outcome?: DialogOutcome;
 };
 
 function clamp(value: number) {
@@ -23,7 +23,8 @@ export function applyStateDelta(
     interest: clamp(state.interest + (delta.interest ?? 0)),
     readiness: clamp(state.readiness + (delta.readiness ?? 0)),
     stage: nextStage ?? state.stage,
-    turn: state.turn + 1
+    turn: state.turn + 1,
+    outcome: state.outcome
   };
 }
 
@@ -72,7 +73,7 @@ const antiRepeatFallbacks: Record<ScenarioStage, string[]> = {
     "Пока я не против продолжить, но хочу понять практический смысл сопровождения, а не просто обещание надежности."
   ],
   trust_check: [
-    "Порядок понятнее. Следующий вопрос — как я увижу подтверждения по машине, оплате и документам до финального решения?",
+    "Порядок понятнее. Следующий вопрос — где я увижу подтверждения по машине, оплате и документам до финального решения?",
     "Хорошо, но мне важно видеть не только объяснение, а конкретные точки контроля по сделке."
   ],
   price_check: [
@@ -106,7 +107,7 @@ function buildReply(
   fallbackMessage: string,
   fallbackDelta: Partial<Omit<ClientState, "stage" | "turn">> = {},
   fallbackStage?: ScenarioStage,
-  outcome?: "success" | "neutral" | "failure"
+  outcome?: DialogOutcome
 ): MockClientReplyResult {
   const rawMessage = rule?.message ?? fallbackMessage;
   const message = pickAntiRepeatFallback(state, rawMessage);
@@ -123,7 +124,8 @@ function buildReply(
     ...nextStateBase,
     lastReplyId: replyId,
     lastReplyText: message,
-    recentReplyIds
+    recentReplyIds,
+    outcome: outcome ?? nextStateBase.outcome
   };
 
   return {
@@ -137,7 +139,7 @@ function buildReply(
 function getContextualSuccessReply(context: TrainingPromptContext) {
   const action = context.targetActions[0] ?? "следующий шаг";
   if (context.mode === "single_stage" && context.stage) {
-    return `Окей, такой шаг звучит нормально. Давайте начнем с «${action}», а дальше я уже пойму, подходит мне формат или нет.`;
+    return `Окей, такой шаг звучит нормально. Давайте начнем с ${action}, а дальше я уже пойму, подходит мне формат или нет.`;
   }
 
   return `Хорошо, давайте начнем с понятного следующего шага — ${action}. Что от меня нужно сейчас?`;
@@ -149,7 +151,22 @@ function getContextualNeutralReply(context: TrainingPromptContext) {
 }
 
 function getContextualFailureReply(context: TrainingPromptContext) {
-  return `Пока мои сомнения не сняты. Вы говорите в целом понятно, но я не увидел конкретики под мою ситуацию в сфере «${context.industry.title}».`;
+  return "Пока мои сомнения не сняты. Вы говорите в целом понятно, но я не увидел конкретики под мою ситуацию.";
+}
+
+function getContextualFinalSuccessReply(context: TrainingPromptContext) {
+  const action = context.targetActions[0] ?? "следующий шаг";
+
+  if (context.mode === "single_stage" && context.stage) {
+    return `Да, сейчас мне стало понятнее. В рамках этого вопроса я готов перейти к следующему шагу — ${action}. Давайте зафиксируем, что именно нужно от меня.`;
+  }
+
+  return `Да, в целом понятно. Я готов двигаться дальше: давайте начнем с шага «${action}». Скажите, что мне нужно отправить или когда удобнее созвониться.`;
+}
+
+function getContextualFinalNeutralReply(context: TrainingPromptContext) {
+  const action = context.targetActions[0] ?? "следующий шаг";
+  return `Я пока не готов принимать решение, но разговор стал понятнее. Давайте зафиксируем следующий спокойный шаг — ${action}, а дальше я уже вернусь с решением.`;
 }
 
 function getContextualDisclosure(context: TrainingPromptContext) {
@@ -158,6 +175,23 @@ function getContextualDisclosure(context: TrainingPromptContext) {
   if (context.industry.id === "psychology") return "Наверное, главное сомнение — поможет ли мне это и сколько встреч понадобится. Давления я точно не хочу.";
   if (context.industry.id === "equipment_b2b") return "У нас есть текущий поставщик, поэтому мне важно понять разницу по срокам, сервису, гарантии и согласованию с руководством.";
   return "Бюджет примерно до 2,3 млн под ключ. Главное — чтобы без скрытых доплат и проблем с документами.";
+}
+
+function getFullFunnelOpeningDisclosure(context: TrainingPromptContext) {
+  const messages: Record<string, string> = {
+    psychology:
+      "Да, здравствуйте. Я пока хочу понять формат: как проходит первая встреча, с чем вы обычно помогаете и как понять, что мне это вообще подходит?",
+    real_estate:
+      "Да, здравствуйте. Я пока смотрю варианты и пытаюсь понять, с чего лучше начать: с бюджета, района, ипотеки или подбора объектов.",
+    online_courses:
+      "Да, здравствуйте. Я пока выбираю обучение и хочу понять, подойдет ли мне программа по целям, времени и результату.",
+    auto:
+      "Да, здравствуйте. Я пока рассматриваю покупку авто из Китая и хочу понять порядок: как считается цена, как подбирается машина и как проходит сделка.",
+    equipment_b2b:
+      "Да, здравствуйте. Мы пока изучаем варианты по оборудованию. Хотелось бы понять, какие решения вы предлагаете, сроки, сервис и порядок расчета."
+  };
+
+  return messages[context.industry.id] ?? "Да, здравствуйте. Я пока хочу понять, как у вас проходит работа и с чего лучше начать.";
 }
 
 function buildContextualReply(
@@ -170,7 +204,6 @@ function buildContextualReply(
     return undefined;
   }
 
-  const stageLabel = context.mode === "single_stage" && context.stage ? ` по этапу «${context.stage.title.toLowerCase()}»` : "";
   const concern = context.commonObjections[0] ?? context.scenario.baseObjection ?? context.scenario.title;
 
   if (analysis.madeOverpromise) {
@@ -179,7 +212,7 @@ function buildContextualReply(
       undefined,
       state,
       analysis,
-      `Вот такие обещания меня и настораживают. В моей ситуации важно понять не гарантии на словах, а что именно вы проверяете и как снижаете риск${stageLabel}.`,
+      "Вот такие обещания меня и настораживают. В моей ситуации важно понять не гарантии на словах, а что именно вы проверяете и как снижаете риск.",
       { trust: -15, doubt: 15, readiness: -10 },
       "trust_check"
     );
@@ -209,13 +242,25 @@ function buildContextualReply(
     );
   }
 
+  if (context.mode === "full_funnel" && state.stage === "opening" && state.turn <= 2) {
+    return buildReply(
+      context.scenario,
+      undefined,
+      state,
+      analysis,
+      getFullFunnelOpeningDisclosure(context),
+      { trust: analysis.empathy || analysis.askedQuestion ? 7 : 3, doubt: analysis.askedQuestion ? -4 : -1, interest: 4, readiness: 4 },
+      "clarification"
+    );
+  }
+
   if (analysis.mentionedNextStep && state.trust >= 55 && state.readiness >= 42) {
     return buildReply(
       context.scenario,
       undefined,
       state,
       analysis,
-      getContextualSuccessReply(context),
+      getContextualFinalSuccessReply(context),
       { trust: 10, doubt: -10, readiness: 20 },
       "close",
       "success"
@@ -270,13 +315,39 @@ function buildContextualReply(
     );
   }
 
+  if (state.turn >= 7 && state.trust >= 55 && state.readiness >= 52) {
+    return buildReply(
+      context.scenario,
+      undefined,
+      state,
+      analysis,
+      getContextualFinalSuccessReply(context),
+      { trust: 6, doubt: -8, readiness: 18 },
+      "close",
+      "success"
+    );
+  }
+
+  if (context.mode === "single_stage" && state.turn >= 4 && state.trust >= 50 && state.readiness >= 40) {
+    return buildReply(
+      context.scenario,
+      undefined,
+      state,
+      analysis,
+      getContextualFinalSuccessReply(context),
+      { trust: 6, doubt: -6, readiness: 16 },
+      "close",
+      "success"
+    );
+  }
+
   if (state.turn >= 6 && state.readiness < 60) {
     return buildReply(
       context.scenario,
       undefined,
       state,
       analysis,
-      getContextualNeutralReply(context),
+      getContextualFinalNeutralReply(context),
       { readiness: -5 },
       "close",
       "neutral"
@@ -301,7 +372,9 @@ function buildContextualReply(
     undefined,
     state,
     analysis,
-    `Я готов продолжить, но хочу больше конкретики по моей сфере и по сценарию «${context.scenario.title.toLowerCase()}». Что вы предлагаете сделать первым шагом?`,
+    context.mode === "full_funnel"
+      ? "Я готов продолжить, но хочу больше конкретики по моей ситуации. Что вы предлагаете сделать первым шагом?"
+      : "Я готов продолжить, но хочу больше конкретики по моей ситуации. Что вы предлагаете сделать первым шагом?",
     { trust: 2, doubt: -2, readiness: 2 },
     state.stage
   );
@@ -320,12 +393,7 @@ export function getMockClientReply({
 }): MockClientReplyResult {
   const analysis = analyzeManagerMessage(managerText);
 
-  const contextualReply = promptContext ? buildContextualReply(promptContext, state, managerText, analysis) : undefined;
-  if (contextualReply) {
-    return contextualReply;
-  }
-
-  if (state.stage === "close") {
+  if (state.stage === "close" || state.outcome) {
     return buildReply(
       scenario,
       undefined,
@@ -334,8 +402,13 @@ export function getMockClientReply({
       "Я уже понял следующий шаг. Давайте лучше на этом зафиксируемся и не будем дальше усложнять.",
       { readiness: 2 },
       "close",
-      state.readiness >= 60 ? "success" : "neutral"
+      state.outcome ?? (state.readiness >= 60 ? "success" : "neutral")
     );
+  }
+
+  const contextualReply = promptContext ? buildContextualReply(promptContext, state, managerText, analysis) : undefined;
+  if (contextualReply) {
+    return contextualReply;
   }
 
   if (analysis.madeOverpromise) {
@@ -447,7 +520,7 @@ export function getMockClientReply({
       findScenarioMessage(scenario, "mentioned_contract", state),
       state,
       analysis,
-      "Договор — это хорошо, но мне важно понять, как контролируются деньги, машина и документы на каждом этапе.",
+      "Договор — это хорошо, но мне важно понять, как контролируются деньги, машина и документы по ходу сделки.",
       { trust: 7, doubt: -4, readiness: 6 },
       "trust_check"
     );
@@ -471,7 +544,7 @@ export function getMockClientReply({
       findScenarioMessage(scenario, "mentioned_documents", state) ?? findScenarioMessage(scenario, "documents_risks_calculation", state),
       state,
       analysis,
-      "С документами понятнее. А на каком этапе я вижу итоговый расчет и понимаю риски по машине?",
+      "С документами понятнее. А когда я вижу итоговый расчет и понимаю риски по машине?",
       { trust: 10, doubt: -8, readiness: 10 },
       "trust_check"
     );

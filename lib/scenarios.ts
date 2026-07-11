@@ -191,7 +191,7 @@ export const scenarios: Scenario[] = [
         id: "trust-stages",
         priority: 60,
         condition: "explained_stages",
-        message: "Порядок понятнее. А на каком этапе я понимаю итоговую сумму и риски по машине?",
+        message: "Порядок понятнее. А когда я понимаю итоговую сумму и риски по машине?",
         nextStage: "price_check",
         stateDelta: { trust: 8, doubt: -6, readiness: 8 }
       },
