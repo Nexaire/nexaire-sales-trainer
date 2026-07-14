@@ -5,8 +5,27 @@ import ThemeToggle from "@/components/ThemeToggle";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI-тренажер продаж — Nexaire Tech demo",
-  description: "Демо AI-тренажера продаж под скрипты и возражения компании"
+  title: "AI-тренажёр продаж для обучения менеджеров — Nexaire Tech",
+  description:
+    "AI-тренажёр продаж для практики менеджеров: реалистичные диалоги, разбор ошибок и настройка под продукт, воронку и сценарии вашей компании.",
+  alternates: {
+    canonical: "https://trainer.nexaire.ru"
+  },
+  openGraph: {
+    type: "website",
+    locale: "ru_RU",
+    url: "https://trainer.nexaire.ru",
+    siteName: "Nexaire Tech",
+    title: "AI-тренажёр продаж для обучения менеджеров — Nexaire Tech",
+    description:
+      "AI-тренажёр продаж для практики менеджеров: реалистичные диалоги, разбор ошибок и настройка под продукт, воронку и сценарии вашей компании."
+  },
+  twitter: {
+    card: "summary",
+    title: "AI-тренажёр продаж для обучения менеджеров — Nexaire Tech",
+    description:
+      "AI-тренажёр продаж для практики менеджеров: реалистичные диалоги, разбор ошибок и настройка под продукт, воронку и сценарии вашей компании."
+  }
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -14,7 +33,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="ru" data-theme="dark">
       <body>
         <header className="site-header">
-          <a className="brand" href="/" aria-label="Nexaire Tech demo">
+          <a className="brand" href="/" aria-label="Nexaire Tech">
             <Image
               className="brand-logo brand-logo-light"
               src="/nexaire-tech-horizontal.png"
@@ -33,35 +52,38 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             />
           </a>
           <nav className="top-nav" aria-label="Основная навигация">
-            <a href="/scenarios">Сценарии</a>
-            <a href="/#how">Как работает</a>
-            <a href="/#lead">Внедрение</a>
+            <div className="top-nav-links">
+              <a href="/#how">Как работает</a>
+              <a href="/#features">Возможности</a>
+              <a href="/#launch">Запуск</a>
+              <a href="/#developer">О разработчике</a>
+              <a href="/#faq">Вопросы</a>
+            </div>
+            <a className="button button-primary header-demo-button" href="/scenarios">
+              Попробовать демо
+            </a>
             <ThemeToggle />
           </nav>
         </header>
         <main>{children}</main>
         <footer className="site-footer">
-          <div>
-            <Image
-              className="footer-logo footer-logo-light"
-              src="/nexaire-tech-horizontal.png"
-              width={220}
-              height={56}
-              alt="Nexaire Tech"
-            />
-            <Image
-              className="footer-logo footer-logo-dark"
-              src="/nexaire-tech-horizontal-white.png"
-              width={220}
-              height={56}
-              alt="Nexaire Tech"
-            />
-            <p>AI-инструменты для обучения, продаж и внутренних процессов.</p>
-          </div>
-          <div className="footer-links">
-            <a href="/scenarios">Попробовать демо</a>
-            <a href="/#lead">Обсудить внедрение</a>
-          </div>
+          <p className="footer-line">
+            <span>ООО «Нексэйр»</span>
+            <span aria-hidden="true">·</span>
+            <span>ИНН 5027341751</span>
+            <span aria-hidden="true">·</span>
+            <span>ОГРН 1255000094414</span>
+            <span aria-hidden="true">·</span>
+            <a href="mailto:info@nexaire.ru">info@nexaire.ru</a>
+            <span aria-hidden="true">·</span>
+            <a href="https://nexaire.ru/privacy.html" target="_blank" rel="noopener noreferrer">
+              Политика конфиденциальности
+            </a>
+            <span aria-hidden="true">·</span>
+            <a href="https://tech.nexaire.ru" target="_blank" rel="noopener noreferrer">
+              Nexaire Tech
+            </a>
+          </p>
         </footer>
       </body>
     </html>

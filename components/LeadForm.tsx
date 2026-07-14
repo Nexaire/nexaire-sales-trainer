@@ -17,6 +17,9 @@ export default function LeadForm({ source }: Props) {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (status === "loading") return;
+
     setStatus("loading");
     setError("");
 
@@ -52,21 +55,39 @@ export default function LeadForm({ source }: Props) {
   }
 
   return (
-    <form className="lead-form" onSubmit={handleSubmit}>
+    <form className="lead-form" aria-busy={status === "loading"} onSubmit={handleSubmit}>
       <label>
         Имя
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Александр" required />
+        <input
+          autoComplete="name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Александр"
+          required
+        />
       </label>
       <label>
         Компания
-        <input value={company} onChange={(event) => setCompany(event.target.value)} placeholder="Название компании" required />
+        <input
+          autoComplete="organization"
+          value={company}
+          onChange={(event) => setCompany(event.target.value)}
+          placeholder="Название компании"
+          required
+        />
       </label>
       <label>
-        Telegram или телефон
-        <input value={contact} onChange={(event) => setContact(event.target.value)} placeholder="@username или +7..." required />
+        Телефон или Telegram
+        <input
+          autoComplete="tel"
+          value={contact}
+          onChange={(event) => setContact(event.target.value)}
+          placeholder="+7... или @username"
+          required
+        />
       </label>
       <label>
-        Комментарий
+        Комментарий — необязательно
         <textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Каких менеджеров нужно тренировать?" rows={4} />
       </label>
       <label className="consent-row">
@@ -85,12 +106,18 @@ export default function LeadForm({ source }: Props) {
         </span>
       </label>
       <button className="button button-primary full-width" disabled={status === "loading" || !consentAccepted} type="submit">
-        {status === "loading" ? "Отправляем..." : "Обсудить внедрение"}
+        {status === "loading" ? "Отправляем..." : "Обсудить запуск"}
       </button>
       {status === "success" && (
-        <p className="form-success">Спасибо. Мы свяжемся с вами и обсудим, как можно собрать тренажер под ваш отдел продаж.</p>
+        <p className="form-success" role="status">
+          Спасибо. Заявка отправлена — мы свяжемся с вами, чтобы обсудить запуск тренажёра.
+        </p>
       )}
-      {status === "error" && <p className="form-error">{error}</p>}
+      {status === "error" && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
     </form>
   );
 }
