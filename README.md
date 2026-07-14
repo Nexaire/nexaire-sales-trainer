@@ -124,6 +124,9 @@ npm run build
 npm run start
 ```
 
+Пошаговое обновление production-стенда, проверки и откат описаны в
+[`docs/production-update.md`](docs/production-update.md).
+
 ## Что не коммитить
 
 ```text

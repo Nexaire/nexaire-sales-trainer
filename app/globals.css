@@ -478,6 +478,45 @@ h2 {
     radial-gradient(circle at 10% 0%, rgba(51, 93, 115, 0.11), transparent 42%);
 }
 
+.direct-contacts {
+  margin-top: 28px;
+}
+
+.cta-section .direct-contacts-title {
+  margin-bottom: 12px;
+  color: var(--text);
+  font-weight: 850;
+}
+
+.direct-contact-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.direct-contact-button {
+  width: auto;
+  min-width: max-content;
+  min-height: 48px;
+  flex: 0 0 auto;
+  gap: 9px;
+  text-align: center;
+  line-height: 1;
+}
+
+.contact-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  fill: currentColor;
+  color: var(--accent);
+}
+
+.contact-icon-max .max-icon-mark {
+  fill: var(--surface);
+}
+
 .lead-form {
   display: grid;
   gap: 14px;
