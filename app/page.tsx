@@ -267,6 +267,56 @@ export default function HomePage() {
           <p>
             На встрече разберём ваш продукт, воронку продаж и задачи обучения. После этого предложим подходящий формат запуска и определим, какие сценарии, этапы и аналитику нужно настроить.
           </p>
+          <div className="direct-contacts">
+            <p className="direct-contacts-title">Связаться напрямую</p>
+            <div className="direct-contact-grid">
+              <a
+                className="button button-secondary direct-contact-button"
+                href="tel:+79853309292"
+                aria-label="Позвонить по номеру +7 985 330 92 92"
+              >
+                <svg className="contact-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M6.62 10.79a15.46 15.46 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24c1.12.37 2.33.57 3.57.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.61 21 3 13.39 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1.02l-2.2 2.2Z" />
+                </svg>
+                <span>+7 985 330 92 92</span>
+              </a>
+              <a
+                className="button button-secondary direct-contact-button"
+                href="https://telegram.me/nexaire_tech"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Написать в Telegram"
+              >
+                <svg className="contact-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M21.8 3.6 18.6 19c-.24 1.09-.88 1.36-1.78.85l-4.87-3.59-2.35 2.26c-.26.26-.48.48-.98.48l.35-4.96 9.02-8.15c.39-.35-.09-.55-.61-.2L6.23 12.71 1.43 11.2C.39 10.87.37 10.16 1.65 9.66L20.4 2.43c.87-.32 1.63.21 1.4 1.17Z" />
+                </svg>
+                <span>Написать</span>
+              </a>
+              <a
+                className="button button-secondary direct-contact-button"
+                href="https://max.ru/u/f9LHodD0cOJ-vZ-7zc6Nn1gazPatEAj2TxVMusPIHovtOoKQmCCf2q7iucs"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Написать в MAX"
+              >
+                <svg className="contact-icon contact-icon-max" viewBox="0 0 1000 1000" aria-hidden="true" focusable="false">
+                  <rect width="1000" height="1000" rx="250" />
+                  <path className="max-icon-mark" fillRule="evenodd" d="M508.211 878.328c-75.007 0-109.864-10.95-170.453-54.75-38.325 49.275-159.686 87.783-164.979 21.9 0-49.456-10.95-91.248-23.36-136.873-14.782-56.21-31.572-118.807-31.572-209.508 0-216.626 177.754-379.597 388.357-379.597 210.785 0 375.947 171.001 375.947 381.604.707 207.346-166.595 376.118-373.94 377.224m3.103-571.585c-102.564-5.292-182.499 65.7-200.201 177.024-14.6 92.162 11.315 204.398 33.397 210.238 10.585 2.555 37.23-18.98 53.837-35.587a189.8 189.8 0 0 0 92.71 33.032c106.273 5.112 197.08-75.794 204.215-181.95 4.154-106.382-77.67-196.486-183.958-202.574Z" clipRule="evenodd" />
+                </svg>
+                <span>Написать</span>
+              </a>
+              <a
+                className="button button-secondary direct-contact-button"
+                href="mailto:tech@nexaire.ru"
+                aria-label="Написать на email tech@nexaire.ru"
+              >
+                <svg className="contact-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M3 5h18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm9 7.2L20.4 7H3.6l8.4 5.2Zm0 2.35L3 9v8h18V9l-9 5.55Z" />
+                </svg>
+                <span>tech@nexaire.ru</span>
+              </a>
+            </div>
+          </div>
         </div>
         <LeadForm source="home" />
       </section>
