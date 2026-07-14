@@ -24,9 +24,9 @@ function getSafeBetterResponse(evaluation: EvaluationResult | null): string {
   return "Понимаю ваше сомнение. Давайте сначала уточним вашу задачу, критерии выбора и что именно сейчас останавливает. После этого я покажу, как решение связано с вашей ситуацией, без давления и лишних обещаний. Если логика подойдет, предложу понятный следующий шаг.";
 }
 
-function ResultList({ title, items }: { title: string; items: string[] }) {
+function ResultList({ title, items, className = "" }: { title: string; items: string[]; className?: string }) {
   return (
-    <div className="result-card">
+    <div className={`result-card ${className}`.trim()}>
       <h2>{title}</h2>
       <ul>
         {items.map((item, index) => (
@@ -176,8 +176,7 @@ export default function ResultView() {
             <div className="result-grid">
               <ResultList title="Сильные стороны" items={evaluation.strengths} />
               <ResultList title={evaluation.mode === "full_funnel" ? "Слабые этапы" : "Ошибки"} items={evaluation.mode === "full_funnel" ? evaluation.weakStages ?? evaluation.mistakes : evaluation.mistakes} />
-              {evaluation.mode === "single_stage" && <ResultList title="Ошибки" items={evaluation.mistakes} />}
-              <ResultList title="Рекомендации" items={evaluation.recommendations} />
+              <ResultList className="result-card-wide" title="Рекомендации" items={evaluation.recommendations} />
             </div>
 
             <article className="result-card improved-answer-card">
@@ -228,7 +227,7 @@ export default function ResultView() {
         <div>
           <p className="eyebrow">Следующий шаг</p>
           <h2>Собрать тренажер под ваш продукт</h2>
-          <p>Оставьте контакт — обсудим сценарии, скрипты, возражения и формат пилота.</p>
+          <p>Оставьте контакт — обсудим сценарии, скрипты, возражения и формат запуска.</p>
         </div>
         <LeadForm source="result" />
       </section>
