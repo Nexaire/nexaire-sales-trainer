@@ -6,6 +6,9 @@ type Props = {
   source: string;
 };
 
+const PERSONAL_DATA_CONSENT_URL = "https://nexaire.ru/consent/forms/";
+const PRIVACY_POLICY_URL = "https://nexaire.ru/privacy/";
+
 export default function LeadForm({ source }: Props) {
   const [name, setName] = useState("");
   const [company, setCompany] = useState("");
@@ -25,7 +28,7 @@ export default function LeadForm({ source }: Props) {
 
     if (!consentAccepted) {
       setStatus("error");
-      setError("Подтвердите согласие с политикой конфиденциальности и обработкой персональных данных");
+      setError("Подтвердите согласие на обработку персональных данных");
       return;
     }
 
@@ -98,13 +101,20 @@ export default function LeadForm({ source }: Props) {
           type="checkbox"
         />
         <span>
-          Оставляя заявку, вы соглашаетесь с{" "}
-          <a href="https://nexaire.ru/privacy.html" target="_blank" rel="noreferrer">
-            политикой конфиденциальности и обработки персональных данных
+          Я даю {" "}
+          <a href={PERSONAL_DATA_CONSENT_URL} target="_blank" rel="noreferrer">
+            согласие на обработку персональных данных
           </a>
           .
         </span>
       </label>
+      <p className="form-legal-note">
+        Порядок обработки данных описан в {" "}
+        <a href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer">
+          политике ООО «Нексэйр»
+        </a>
+        .
+      </p>
       <button className="button button-primary full-width" disabled={status === "loading" || !consentAccepted} type="submit">
         {status === "loading" ? "Отправляем..." : "Обсудить запуск"}
       </button>
