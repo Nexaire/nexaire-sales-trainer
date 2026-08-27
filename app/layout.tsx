@@ -109,7 +109,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <span aria-hidden="true">·</span>
             <a href="mailto:info@nexaire.ru">info@nexaire.ru</a>
             <span aria-hidden="true">·</span>
-            <a href="https://nexaire.ru/privacy.html" target="_blank" rel="noopener noreferrer">
+            <a href="https://nexaire.ru/privacy/" target="_blank" rel="noopener noreferrer">
               Политика конфиденциальности
             </a>
             <span aria-hidden="true">·</span>

@@ -138,5 +138,4 @@ export type LeadPayload = {
   contact: string;
   comment?: string;
   source?: string;
-  consentAccepted?: boolean;
 };

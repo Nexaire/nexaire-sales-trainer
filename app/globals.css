@@ -1460,34 +1460,6 @@ html[data-theme="dark"] .difficulty-easy {
   line-height: 1.7;
 }
 
-.lead-form .consent-row {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  align-items: start;
-  gap: 10px;
-  color: var(--muted-strong);
-  font-size: 13px;
-  font-weight: 650;
-  line-height: 1.45;
-}
-
-.lead-form .consent-row input {
-  width: 18px;
-  height: 18px;
-  margin: 1px 0 0;
-  accent-color: var(--accent);
-}
-
-.lead-form .consent-row a {
-  color: var(--accent-strong);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-html[data-theme="dark"] .lead-form .consent-row a {
-  color: #7fd7ff;
-}
-
 /* Product demo wizard: industry + mode + stage + scenario. */
 .scenario-wizard-head {
   max-width: 920px;

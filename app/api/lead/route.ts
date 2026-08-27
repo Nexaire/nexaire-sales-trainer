@@ -10,10 +10,6 @@ function normalize(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function normalizeBoolean(value: unknown): boolean {
-  return value === true || value === "true" || value === "on";
-}
-
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -30,8 +26,7 @@ function formatLeadText(lead: LeadPayload) {
     `Компания: ${lead.company}`,
     `Контакт: ${lead.contact}`,
     `Комментарий: ${lead.comment || "—"}`,
-    `Источник: ${lead.source || "—"}`,
-    `Согласие с политикой: ${lead.consentAccepted ? "да" : "нет"}`
+    `Источник: ${lead.source || "—"}`
   ].join("\n");
 }
 
@@ -41,8 +36,7 @@ function formatLeadHtml(lead: LeadPayload) {
     ["Компания", lead.company],
     ["Контакт", lead.contact],
     ["Комментарий", lead.comment || "—"],
-    ["Источник", lead.source || "—"],
-    ["Согласие с политикой", lead.consentAccepted ? "да" : "нет"]
+    ["Источник", lead.source || "—"]
   ];
 
   return `
@@ -59,10 +53,6 @@ function formatLeadHtml(lead: LeadPayload) {
           )
           .join("")}
       </table>
-      <p style="margin-top: 16px; color: #6b7280;">
-        Пользователь подтвердил согласие с политикой конфиденциальности и обработки персональных данных:
-        <a href="https://nexaire.ru/privacy.html">https://nexaire.ru/privacy.html</a>
-      </p>
     </div>
   `;
 }
@@ -118,19 +108,11 @@ export async function POST(request: Request) {
       company: normalize(body?.company),
       contact: normalize(body?.contact),
       comment: normalize(body?.comment),
-      source: normalize(body?.source) || "unknown",
-      consentAccepted: normalizeBoolean(body?.consentAccepted)
+      source: normalize(body?.source) || "unknown"
     };
 
     if (!lead.name || !lead.company || !lead.contact) {
       return NextResponse.json({ error: "Заполните имя, компанию и контакт" }, { status: 400 });
-    }
-
-    if (!lead.consentAccepted) {
-      return NextResponse.json(
-        { error: "Подтвердите согласие с политикой конфиденциальности и обработкой персональных данных" },
-        { status: 400 }
-      );
     }
 
     const dataDir = path.join(process.cwd(), "data");
